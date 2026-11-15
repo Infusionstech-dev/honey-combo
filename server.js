@@ -3,7 +3,10 @@
 
 const path = require('path');
 const express = require('express');
-const { offerProducts, shippingAreas, maxQuantityPerProduct, whatsappNumber } = require('./data/offerData');
+const { offerProducts, shippingAreas, maxQuantityPerProduct, whatsappNumber, bkashNumber, bkashAccountType } = require('./data/offerData');
+
+// bKash "Send Money" is offered only when a number is configured.
+const isBkashEnabled = String(bkashNumber || '').trim().length > 0;
 
 const app = express();
 const port = Number(process.env.PORT) || 4000;
@@ -13,7 +16,13 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 // The page asks for products and delivery charges from here.
 app.get('/api/offer', (request, response) => {
-  response.json({ offerProducts, shippingAreas, maxQuantityPerProduct, whatsappNumber });
+  response.json({
+    offerProducts,
+    shippingAreas,
+    maxQuantityPerProduct,
+    whatsappNumber,
+    bkash: isBkashEnabled ? { number: String(bkashNumber).trim(), accountType: bkashAccountType } : null,
+  });
 });
 
 const bangladeshMobilePattern = /^01[3-9]\d{8}$/;
@@ -45,6 +54,18 @@ function validateOrder(orderRequest) {
   const shippingArea = shippingAreas.find((area) => area.id === orderRequest.shippingAreaId);
   if (!shippingArea) fieldErrors.shippingArea = 'ডেলিভারি এলাকা বাছাই করুন।';
 
+  // Payment: cash on delivery by default, or bKash "Send Money" with a Transaction ID.
+  const wantsBkash = orderRequest.paymentMethod === 'bkash';
+  let bkashTransactionId = '';
+  if (wantsBkash && !isBkashEnabled) {
+    fieldErrors.paymentMethod = 'বিকাশ পেমেন্ট এই মুহূর্তে চালু নেই।';
+  } else if (wantsBkash) {
+    bkashTransactionId = cleanText(orderRequest.transactionId, 20).toUpperCase();
+    if (!/^[A-Z0-9]{8,12}$/.test(bkashTransactionId)) {
+      fieldErrors.transactionId = 'Send Money করার পর বিকাশের Transaction ID (TrxID) দিন।';
+    }
+  }
+
   const requestedItems = Array.isArray(orderRequest.items) ? orderRequest.items : [];
   const orderItems = [];
   for (const requestedItem of requestedItems) {
@@ -62,6 +83,10 @@ function validateOrder(orderRequest) {
   if (Object.keys(fieldErrors).length > 0) return { fieldErrors };
 
   const subtotal = orderItems.reduce((sum, item) => sum + item.lineTotal, 0);
+  const payment = wantsBkash
+    ? { method: 'bkash', label: 'বিকাশ (Send Money)', transactionId: bkashTransactionId, sentTo: String(bkashNumber).trim() }
+    : { method: 'cashOnDelivery', label: 'ক্যাশ অন ডেলিভারি' };
+
   return {
     order: {
       customerName,
@@ -71,7 +96,7 @@ function validateOrder(orderRequest) {
       shippingArea: { id: shippingArea.id, label: shippingArea.label, charge: shippingArea.charge },
       subtotal,
       grandTotal: subtotal + shippingArea.charge,
-      paymentMethod: 'ক্যাশ অন ডেলিভারি',
+      payment,
     },
   };
 }

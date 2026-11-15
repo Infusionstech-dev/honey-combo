@@ -66,6 +66,18 @@ const customerAddressInput = document.getElementById('customerAddress');
 const successModal = document.getElementById('successModal');
 const closeModalButton = document.getElementById('closeModalButton');
 
+// Payment elements
+const bkashOption = document.getElementById('bkashOption');
+const bkashBox = document.getElementById('bkashBox');
+const bkashAmount = document.getElementById('bkashAmount');
+const transactionIdInput = document.getElementById('transactionId');
+let isBkashEnabled = false;
+
+function getSelectedPaymentMethod() {
+  const checkedRadio = orderForm.querySelector('input[name="paymentMethod"]:checked');
+  return checkedRadio ? checkedRadio.value : 'cashOnDelivery';
+}
+
 // ---- Product picker cards ----
 function renderProductPickers() {
   productPickGrid.innerHTML = offerProducts.map((product) => `
@@ -125,6 +137,7 @@ function updateOrderView() {
   summaryShipping.textContent = formatTaka(shippingCharge);
   summaryTotal.textContent = formatTaka(grandTotal);
   buttonTotal.textContent = formatTaka(grandTotal);
+  bkashAmount.textContent = formatTaka(grandTotal);
 
   if (cartItems.length > 0) productError.hidden = true;
 }
@@ -152,6 +165,14 @@ shippingOptions.addEventListener('change', (event) => {
   }
 });
 
+// Show the bKash "Send Money" box only while the bKash option is selected.
+orderForm.addEventListener('change', (event) => {
+  if (event.target.name !== 'paymentMethod') return;
+  const bkashSelected = getSelectedPaymentMethod() === 'bkash';
+  bkashBox.hidden = !bkashSelected;
+  if (!bkashSelected) showFieldError(transactionIdInput, false);
+});
+
 // ---- Validation ----
 function showFieldError(inputElement, hasError) {
   const errorMessage = inputElement.closest('.field').querySelector('.field-error');
@@ -172,17 +193,23 @@ function validateOrderForm() {
   const hasProducts = getCartItems().length > 0;
   productError.hidden = hasProducts;
 
+  // When paying by bKash, a valid Transaction ID is required.
+  const payingWithBkash = getSelectedPaymentMethod() === 'bkash';
+  const isTransactionIdValid = !payingWithBkash
+    || showFieldError(transactionIdInput, !/^[a-zA-Z0-9]{8,12}$/.test(transactionIdInput.value.trim()));
+
   if (!hasProducts) {
     productPickGrid.scrollIntoView({ behavior: 'smooth', block: 'center' });
   } else {
-    const firstInvalidInput = [customerNameInput, customerPhoneInput, customerAddressInput].find((input) => input.classList.contains('has-error'));
+    const firstInvalidInput = [customerNameInput, customerPhoneInput, customerAddressInput, payingWithBkash ? transactionIdInput : null]
+      .find((input) => input && input.classList.contains('has-error'));
     if (firstInvalidInput) firstInvalidInput.focus();
   }
-  return isNameValid && isPhoneValid && isAddressValid && hasProducts;
+  return isNameValid && isPhoneValid && isAddressValid && isTransactionIdValid && hasProducts;
 }
 
 // Clear an error as soon as the customer fixes that field.
-[customerNameInput, customerPhoneInput, customerAddressInput].forEach((input) => {
+[customerNameInput, customerPhoneInput, customerAddressInput, transactionIdInput].forEach((input) => {
   input.addEventListener('input', () => {
     if (input.classList.contains('has-error')) showFieldError(input, false);
   });
@@ -191,7 +218,7 @@ function validateOrderForm() {
 // ---- Submit: send the order to the Node.js server ----
 const submitOrderButton = document.getElementById('submitOrderButton');
 const submitErrorMessage = document.getElementById('submitErrorMessage');
-const fieldInputsByName = { customerName: customerNameInput, customerPhone: customerPhoneInput, customerAddress: customerAddressInput };
+const fieldInputsByName = { customerName: customerNameInput, customerPhone: customerPhoneInput, customerAddress: customerAddressInput, transactionId: transactionIdInput };
 
 function showSubmitError(messageText) {
   submitErrorMessage.textContent = messageText;
@@ -204,14 +231,18 @@ function showOrderConfirmation(placedOrder) {
 
   const successItems = document.getElementById('successItems');
   successItems.replaceChildren();
-  const confirmationRows = placedOrder.items.map((item) => [`${item.name} × ${toBanglaNumber(item.quantity)}`, item.lineTotal]);
-  confirmationRows.push([`ডেলিভারি (${placedOrder.shippingArea.label})`, placedOrder.shippingArea.charge]);
-  confirmationRows.forEach(([rowLabel, rowAmount]) => {
+  const confirmationRows = placedOrder.items.map((item) => [`${item.name} × ${toBanglaNumber(item.quantity)}`, formatTaka(item.lineTotal)]);
+  confirmationRows.push([`ডেলিভারি (${placedOrder.shippingArea.label})`, formatTaka(placedOrder.shippingArea.charge)]);
+  confirmationRows.push(['পেমেন্ট', placedOrder.payment.label]);
+  if (placedOrder.payment.transactionId) {
+    confirmationRows.push(['TrxID', placedOrder.payment.transactionId]);
+  }
+  confirmationRows.forEach(([rowLabel, rowValue]) => {
     const rowItem = document.createElement('li');
     const labelText = document.createElement('span');
     const amountText = document.createElement('b');
     labelText.textContent = rowLabel;
-    amountText.textContent = formatTaka(rowAmount);
+    amountText.textContent = rowValue;
     rowItem.append(labelText, amountText);
     successItems.append(rowItem);
   });
@@ -232,6 +263,8 @@ orderForm.addEventListener('submit', async (event) => {
     customerAddress: customerAddressInput.value.trim(),
     shippingAreaId: selectedShippingAreaId,
     items: getCartItems().map((item) => ({ productId: item.product.id, quantity: item.quantity })),
+    paymentMethod: getSelectedPaymentMethod(),
+    transactionId: transactionIdInput.value.trim(),
   };
 
   const buttonOriginalHtml = submitOrderButton.innerHTML;
@@ -251,7 +284,7 @@ orderForm.addEventListener('submit', async (event) => {
       Object.entries(fieldInputsByName).forEach(([fieldName, inputElement]) => {
         if (fieldErrors[fieldName]) showFieldError(inputElement, true);
       });
-      showSubmitError(fieldErrors.items || fieldErrors.shippingArea || responseData.message || 'অর্ডার পাঠানো যায়নি।');
+      showSubmitError(fieldErrors.items || fieldErrors.shippingArea || fieldErrors.paymentMethod || fieldErrors.transactionId || responseData.message || 'অর্ডার পাঠানো যায়নি।');
       return;
     }
 
@@ -295,9 +328,19 @@ async function loadOffer() {
     renderShippingOptions();
     updateOrderView();
     showWhatsappSection(offerData.whatsappNumber);
+    enableBkashOption(offerData.bkash);
   } catch {
     productPickGrid.innerHTML = '<p class="load-error">পণ্যের তথ্য লোড করা যায়নি। পেজটি রিফ্রেশ করুন।</p>';
   }
+}
+
+// ---- bKash "Send Money" option (shown only when the server has a bKash number) ----
+function enableBkashOption(bkashSettings) {
+  if (!bkashSettings || !bkashSettings.number) return;
+  isBkashEnabled = true;
+  document.getElementById('bkashNumberText').textContent = bkashSettings.number;
+  document.getElementById('bkashAccountType').textContent = bkashSettings.accountType === 'Merchant' ? 'Merchant' : 'Personal';
+  bkashOption.hidden = false;
 }
 
 // ---- WhatsApp contact section (hidden when no number is set on the server) ----
@@ -340,5 +383,5 @@ loadOffer();
 
 // Some browsers refill typed text after a refresh; clear it so a refresh always starts fresh.
 window.addEventListener('pageshow', () => {
-  [customerNameInput, customerPhoneInput, customerAddressInput].forEach((input) => { input.value = ''; });
+  [customerNameInput, customerPhoneInput, customerAddressInput, transactionIdInput].forEach((input) => { input.value = ''; });
 });

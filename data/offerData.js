@@ -18,4 +18,13 @@ const maxQuantityPerProduct = 20;
 // Leave it empty ('') to hide that section.
 const whatsappNumber = '';
 
-module.exports = { offerProducts, shippingAreas, maxQuantityPerProduct, whatsappNumber };
+// bKash "Send Money" payment option.
+// Replace bkashNumber with your real bKash number to turn the option on;
+// leave it empty ('') to show only Cash on Delivery.
+// This is the simple manual flow: the customer sends money to this number on
+// their own bKash app, then types the Transaction ID into the order form.
+// (No PIN or OTP is ever entered on this site.)
+const bkashNumber = '01XXXXXXXXX';
+const bkashAccountType = 'Personal'; // 'Personal' or 'Merchant'
+
+module.exports = { offerProducts, shippingAreas, maxQuantityPerProduct, whatsappNumber, bkashNumber, bkashAccountType };

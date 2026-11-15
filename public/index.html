@@ -166,9 +166,37 @@
             </tfoot>
           </table>
 
-          <div class="payment-note">
-            <label class="radio-row"><input type="radio" name="paymentMethod" value="cashOnDelivery" checked> <span>ক্যাশ অন ডেলিভারি</span></label>
-            <p>পণ্য হাতে পেয়ে টাকা পরিশোধ করুন।</p>
+          <h3 class="order-subheading">পেমেন্ট মেথড</h3>
+          <div class="payment-options">
+            <label class="radio-row payment-row">
+              <input type="radio" name="paymentMethod" value="cashOnDelivery" checked>
+              <span>ক্যাশ অন ডেলিভারি</span>
+              <small>পণ্য হাতে পেয়ে টাকা পরিশোধ করুন।</small>
+            </label>
+            <label class="radio-row payment-row" id="bkashOption" hidden>
+              <input type="radio" name="paymentMethod" value="bkash">
+              <span class="bkash-label">বিকাশ <b>Send Money</b></span>
+              <small>আগে Send Money করে Transaction ID দিন।</small>
+            </label>
+          </div>
+
+          <!-- bKash manual instructions (shown only when bKash is selected) -->
+          <div class="bkash-box" id="bkashBox" hidden>
+            <ol class="bkash-steps">
+              <li>নিচের নাম্বারে <b>Send Money</b> করুন (<span id="bkashAccountType">Personal</span>):
+                <div class="bkash-number-row">
+                  <span class="bkash-number" id="bkashNumberText">01XXXXXXXXX</span>
+                </div>
+              </li>
+              <li>পরিমাণ: <b id="bkashAmount">৳০</b> (আপনার সর্বমোট বিল)</li>
+              <li>Send Money শেষ হলে বিকাশের <b>Transaction ID (TrxID)</b> নিচে লিখুন।</li>
+            </ol>
+            <label class="field bkash-trx-field">
+              <span>বিকাশ Transaction ID (TrxID) <i>*</i></span>
+              <input type="text" id="transactionId" name="transactionId" autocomplete="off" autocapitalize="characters" placeholder="যেমন: 9FA7X8K2L1">
+              <small class="field-error" hidden>Send Money করার পর বিকাশের Transaction ID (TrxID) দিন।</small>
+            </label>
+            <p class="bkash-safety">⚠️ কখনো আপনার বিকাশ <b>PIN বা OTP</b> এখানে বা কাউকে দেবেন না। শুধু Send Money করে TrxID দিন।</p>
           </div>
 
           <p class="field-error submit-error" id="submitErrorMessage" role="alert" hidden></p>
